@@ -5,7 +5,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Palmtree, MapPin, Calendar, Music, Volume2, VolumeX, PartyPopper } from 'lucide-react';
+import { Palmtree, MapPin, Calendar, Music, Volume2, VolumeX, PartyPopper, Home, ExternalLink } from 'lucide-react';
+import goabeach from './assets/goabeach.mp3';
 
 // Countdown target date: August 7, 2026
 const TARGET_DATE = new Date('2026-08-07T00:00:00').getTime();
@@ -21,7 +22,9 @@ export default function App() {
   const [timeLeft, setTimeLeft] = useState<TimeLeft>(calculateTimeLeft());
   const [isMuted, setIsMuted] = useState(true);
   const [showConfetti, setShowConfetti] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playerRef = useRef<any>(null);
+  const playerContainerRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   function calculateTimeLeft(): TimeLeft {
     const now = new Date().getTime();
@@ -40,6 +43,71 @@ export default function App() {
   }
 
   useEffect(() => {
+    // Load YouTube API
+    if (!(window as any).YT) {
+      const tag = document.createElement('script');
+      tag.src = "https://www.youtube.com/iframe_api";
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+    }
+
+    const initPlayer = () => {
+      if (playerRef.current || !playerContainerRef.current) return;
+      try {
+        console.log("Initializing YouTube Player...");
+        playerRef.current = new (window as any).YT.Player(playerContainerRef.current, {
+          height: '100%',
+          width: '100%',
+          videoId: 'n5WnMJ0J6qA',
+          playerVars: {
+            autoplay: 1,
+            mute: 1,
+            loop: 1,
+            playlist: 'n5WnMJ0J6qA',
+            controls: 0,
+            showinfo: 0,
+            rel: 0,
+            iv_load_policy: 3,
+            modestbranding: 1,
+            disablekb: 1,
+            enablejsapi: 1,
+            playsinline: 1,
+            origin: window.location.origin
+          },
+          events: {
+            'onReady': (event: any) => {
+              console.log("Player Ready");
+              event.target.playVideo();
+              // Keep it muted initially to satisfy autoplay policy
+              event.target.mute();
+            },
+            'onStateChange': (event: any) => {
+              const state = event.data;
+              const YTState = (window as any).YT.PlayerState;
+              console.log("Player State Change:", state);
+              
+              // Force play if paused or ended, unless it's intended
+              if (state === YTState.PAUSED || state === YTState.ENDED) {
+                event.target.playVideo();
+              }
+            },
+            'onError': (event: any) => {
+              console.error("YouTube Player Error:", event.data);
+              event.target.playVideo();
+            }
+          }
+        });
+      } catch (err) {
+        console.error("YouTube Player init failed:", err);
+      }
+    };
+
+    if ((window as any).YT && (window as any).YT.Player) {
+      initPlayer();
+    } else {
+      (window as any).onYouTubeIframeAPIReady = initPlayer;
+    }
+
     const timer = setInterval(() => {
       const newTime = calculateTimeLeft();
       setTimeLeft(newTime);
@@ -50,26 +118,50 @@ export default function App() {
       }
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+    };
   }, []);
 
   const toggleAudio = () => {
-    if (audioRef.current) {
+    if (!audioRef.current) return;
+
+    try {
       if (isMuted) {
-        audioRef.current.play().catch(e => console.log("Audio play blocked", e));
+        audioRef.current.play().catch(err => console.error("Audio play failed:", err));
+        audioRef.current.volume = 1.0;
+        setIsMuted(false);
+        console.log("Local audio started");
       } else {
         audioRef.current.pause();
+        setIsMuted(true);
+        console.log("Local audio paused");
       }
-      setIsMuted(!isMuted);
+    } catch (err) {
+      console.error("Toggle audio error:", err);
     }
   };
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-white font-sans selection:bg-orange-500/30 overflow-x-hidden">
       {/* Background Layer */}
-      <div className="fixed inset-0 z-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/20 via-pink-600/20 to-purple-900/40 animate-gradient-slow" />
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1512100356956-c1b47f4b8a21?auto=format&fit=crop&q=80&w=2000')] bg-cover bg-center opacity-30 mix-blend-overlay" />
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        {/* Local Audio Element */}
+        <audio 
+          ref={audioRef} 
+          src={goabeach}
+          loop 
+          preload="auto"
+        />
+        
+        {/* YouTube Background Embed - Container for JS API */}
+        <div className="absolute inset-0 w-full h-full scale-110 lg:scale-125">
+          <div ref={playerContainerRef} className="w-full h-full pointer-events-none" />
+        </div>
+
+        {/* Existing Overlays for style */}
+        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/10 via-pink-600/10 to-purple-900/30 animate-gradient-slow" />
+        <div className="absolute inset-0 bg-black/40" /> {/* Darken slightly for readability */}
         
         {/* Animated Waves Overlay */}
         <div className="absolute bottom-0 left-0 w-full h-64 opacity-20 pointer-events-none">
@@ -83,13 +175,6 @@ export default function App() {
           </svg>
         </div>
       </div>
-
-      {/* Audio Element (Hidden) */}
-      <audio 
-        ref={audioRef}
-        loop
-        src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" // Placeholder chill vibe
-      />
 
       {/* Content */}
       <main className="relative z-10 max-w-5xl mx-auto px-6 py-12 flex flex-col items-center justify-center min-h-screen text-center">
@@ -170,12 +255,84 @@ export default function App() {
           </p>
         </motion.div>
 
+        {/* The Stay Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="w-full max-w-5xl mb-16"
+        >
+          <h2 className="text-3xl md:text-4xl font-bold mb-10 tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-orange-300 to-pink-400">
+            The Base Camps
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* North Goa Stay */}
+            <div className="glass-card p-8 rounded-3xl text-left relative overflow-hidden group hover:border-orange-500/50 transition-colors">
+              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <Home size={80} />
+              </div>
+              <span className="inline-block px-3 py-1 rounded-full bg-orange-500/20 text-orange-400 text-xs font-bold uppercase tracking-widest mb-4">
+                Part 1: North Goa
+              </span>
+              <h3 className="text-2xl font-bold mb-2">UNIQUE FEATURES @ PHASE 4</h3>
+              <div className="space-y-3 mt-6">
+                <div className="flex items-center gap-3 text-white/60">
+                  <Calendar size={18} className="text-orange-400" />
+                  <span>7 Aug - 10 Aug</span>
+                </div>
+                <a 
+                  href="https://maps.app.goo.gl/bLkFf2wc8e3BwUyX7" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 text-white/60 hover:text-orange-400 transition-colors"
+                >
+                  <MapPin size={18} className="text-orange-400" />
+                  <span className="border-b border-transparent hover:border-orange-400">View Location</span>
+                  <ExternalLink size={14} />
+                </a>
+              </div>
+            </div>
+
+            {/* South Goa Stay */}
+            <div className="glass-card p-8 rounded-3xl text-left relative overflow-hidden group hover:border-pink-500/50 transition-colors">
+              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <Home size={80} />
+              </div>
+              <span className="inline-block px-3 py-1 rounded-full bg-pink-500/20 text-pink-400 text-xs font-bold uppercase tracking-widest mb-4">
+                Part 2: South Goa
+              </span>
+              <h3 className="text-2xl font-bold mb-2 uppercase tracking-tight">4BHK Beach Villa w/Pool @RitzPalazzo</h3>
+              <div className="space-y-3 mt-6">
+                <div className="flex items-center gap-3 text-white/60">
+                  <Calendar size={18} className="text-pink-400" />
+                  <span>10 Aug - 13 Aug</span>
+                </div>
+                <a 
+                  href="https://maps.app.goo.gl/7DUqrkA7EEeNePxV8" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 text-white/60 hover:text-pink-400 transition-colors"
+                >
+                  <MapPin size={18} className="text-pink-400" />
+                  <span className="border-b border-transparent hover:border-pink-400">View Location</span>
+                  <ExternalLink size={14} />
+                </a>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
         {/* Action Buttons */}
         <div className="flex flex-wrap justify-center gap-6">
           <motion.button
             whileHover={{ scale: 1.05, boxShadow: "0 0 25px rgba(249,115,22,0.4)" }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => window.open('https://open.spotify.com', '_blank')}
+            onClick={() => {
+              toggleAudio();
+              // If we were muted and just started the vibe, maybe open spotify? 
+              // But user said "just play uploaded audio", so we just toggle.
+              if (isMuted) window.open('https://open.spotify.com', '_blank');
+            }}
             className="px-10 py-4 bg-gradient-to-r from-orange-500 to-pink-600 rounded-full font-bold text-lg flex items-center gap-3 shadow-xl transition-all"
           >
             <Music size={20} />
@@ -189,7 +346,7 @@ export default function App() {
             className="px-6 py-4 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full font-medium flex items-center gap-3 border border-white/10 transition-all"
           >
             {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-            {isMuted ? "Unmute Waves" : "Mute Waves"}
+            {isMuted ? "Goa Waale Beach Pe 🎵" : "Mute Vibe"}
           </motion.button>
         </div>
 
